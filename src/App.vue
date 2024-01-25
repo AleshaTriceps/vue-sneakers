@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref, watch, reactive } from 'vue'
+import { onMounted, ref, watch, reactive, provide } from 'vue'
 import axios from 'axios'
 import Heeader from './components/Heeader.vue'
 import CardList from './components/CardList.vue'
@@ -19,6 +19,48 @@ const onChangeSearchInput = (event) => {
   filters.searchQuery = event.target.value
 }
 
+const fetchFavorites = async () => {
+  try {
+    const { data: favorites } = await axios.get('https://eb091153171ae55a.mokky.dev/favorites')
+    items.value = items.value.map((item) => {
+      const favorite = favorites.find((favorite) => favorite.parentId === item.id)
+
+      if (!favorite) {
+        return item
+      }
+      return {
+        ...item,
+        isFavorite: true,
+        favoriteId: favorite.id
+      }
+    })
+  } catch (err) {
+    console.log(err)
+  }
+  console.log(items.value)
+}
+
+const addToFavorite = async (item) => {
+  try {
+    if (!item.isFavorite) {
+      const obj = {
+        parentId: item.id
+      }
+      item.isFavorite = true
+      const { data } = await axios.post(`https://eb091153171ae55a.mokky.dev/favorites`, obj)
+
+      item.favoriteId = data.id
+    } else {
+      item.isFavorite = false
+      await axios.delete(`https://eb091153171ae55a.mokky.dev/favorites/${item.favoriteId}`)
+
+      item.favoriteId = null
+    }
+  } catch (err) {
+    console.log(err)
+  }
+}
+
 const fetchItems = async () => {
   try {
     const params = {
@@ -31,15 +73,25 @@ const fetchItems = async () => {
     const { data } = await axios.get('https://eb091153171ae55a.mokky.dev/items', {
       params
     })
-    items.value = data
+    items.value = data.map((obj) => ({
+      ...obj,
+      isFavorite: false,
+      favoriteId: null,
+      ifAdded: false
+    }))
   } catch (err) {
     console.log(err)
   }
 }
 
-onMounted(fetchItems)
+onMounted(async () => {
+  await fetchItems()
+  await fetchFavorites()
+})
 
 watch(filters, fetchItems)
+
+provide('addToFavorite', addToFavorite)
 </script>
 
 <template>
@@ -70,7 +122,7 @@ watch(filters, fetchItems)
         </div>
       </div>
       <div class="mt-10">
-        <CardList :items="items" />
+        <CardList :items="items" @addToFavorite="addToFavorite" />
       </div>
     </div>
   </div>
