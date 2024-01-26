@@ -1,15 +1,64 @@
 <script setup>
-import { onMounted, ref, watch, reactive, provide } from 'vue'
+import { onMounted, ref, watch, reactive, provide, computed } from 'vue'
 import axios from 'axios'
 import Heeader from './components/Heeader.vue'
 import CardList from './components/CardList.vue'
 import Drawer from './components/Drawer.vue'
 
 const items = ref([])
+const cart = ref([])
+const isCreatingOrder = ref(false)
+const drawerOpen = ref(false)
+const totalPrice = computed(() => cart.value.reduce((acc, item) => acc + item.price, 0))
+const vatPrice = computed(() => Math.round((totalPrice.value * 5) / 100))
+
+const cartIsEmpty = computed(() => cart.value.length === 0)
+const cartButtonDisabled = computed(() => isCreatingOrder.value || cartIsEmpty.value)
+
 const filters = reactive({
   sortBy: '',
   searchQuery: ''
 })
+
+const closeDrawer = () => {
+  drawerOpen.value = false
+}
+
+const openDrawer = () => {
+  drawerOpen.value = true
+}
+const addToCart = (item) => {
+  cart.value.push(item)
+  item.isAdded = true
+}
+const removeFromCart = (item) => {
+  cart.value.splice(cart.value.indexOf(item), 1)
+  item.isAdded = false
+}
+
+const createOrder = async () => {
+  try {
+    isCreatingOrder.value = true
+    const { data } = await axios.post('https://eb091153171ae55a.mokky.dev/orders', {
+      items: cart.value,
+      totalPrice: totalPrice.value
+    })
+    cart.value = []
+    return data
+  } catch (err) {
+    console.log(err)
+  } finally {
+    isCreatingOrder.value = false
+  }
+}
+
+const onClickAddPlus = (item) => {
+  if (!item.isAdded) {
+    addToCart(item)
+  } else {
+    removeFromCart(item)
+  }
+}
 
 const onChangeSelect = (event) => {
   filters.sortBy = event.target.value
@@ -85,19 +134,53 @@ const fetchItems = async () => {
 }
 
 onMounted(async () => {
+  const localCart = localStorage.getItem('cart')
+  cart.value = localCart ? JSON.parse(localCart) : []
+
   await fetchItems()
   await fetchFavorites()
+  items.value = items.value.map((item) => ({
+    ...item,
+    isAdded: cart.value.some((cartItem) => cartItem.id === item.id)
+  }))
 })
 
 watch(filters, fetchItems)
 
-provide('addToFavorite', addToFavorite)
+watch(cart, () => {
+  items.value = items.value.map((item) => ({
+    ...item,
+    isAdded: false
+  }))
+})
+
+watch(
+  cart,
+  () => {
+    localStorage.setItem('cart', JSON.stringify(cart.value))
+  },
+  { deep: true }
+)
+
+provide('cart', {
+  cart,
+  closeDrawer,
+  openDrawer,
+  addToCart,
+  removeFromCart
+})
 </script>
 
 <template>
-  <!-- <Drawer /> -->
+  <Drawer
+    v-if="drawerOpen"
+    :total-price="totalPrice"
+    :vat-price="vatPrice"
+    @create-order="createOrder"
+    :button-disabled="cartButtonDisabled"
+  />
   <div class="bg-white w-4/5 m-auto h-screen rounded-xl shadow-xl mt-14">
-    <Heeader />
+    <Heeader :total-price="totalPrice" @open-drawer="openDrawer" />
 
     <div class="p-10">
       <div class="flex justify-between items-center">
@@ -122,7 +205,7 @@ provide('addToFavorite', addToFavorite)
         </div>
       </div>
       <div class="mt-10">
-        <CardList :items="items" @addToFavorite="addToFavorite" />
+        <CardList :items="items" @add-to-favorite="addToFavorite" @add-to-cart="onClickAddPlus" />
       </div>
     </div>
   </div>
