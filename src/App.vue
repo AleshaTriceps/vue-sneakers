@@ -122,6 +122,7 @@ const fetchItems = async () => {
     const { data } = await axios.get('https://eb091153171ae55a.mokky.dev/items', {
       params
     })
+    console.log(data)
     items.value = data.map((obj) => ({
       ...obj,
       isFavorite: false,
